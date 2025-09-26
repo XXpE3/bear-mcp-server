@@ -27,7 +27,7 @@ const defaultDBPath = path.join(
 const INDEX_PATH = path.join(__dirname, 'note_vectors');
 
 // Embedding model name
-const EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2';
+const EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
 
 // Global variables for embedding model and vector index
 let embedder = null;
@@ -50,7 +50,7 @@ export const createDb = (dbPath) => {
   // Promisify database methods
   db.allAsync = promisify(db.all).bind(db);
   db.getAsync = promisify(db.get).bind(db);
-  
+
   return db;
 };
 
@@ -78,13 +78,13 @@ export const loadVectorIndex = async () => {
       // Check if index exists
       try {
       await fs.access(`${INDEX_PATH}.index`);
-      
+
       // Load index using the direct file reading method
       vectorIndex = IndexFlatL2.read(`${INDEX_PATH}.index`);
-        
+
         const idMapData = await fs.readFile(`${INDEX_PATH}.json`, 'utf8');
         noteIdMap = JSON.parse(idMapData);
-        
+
         console.error(`Loaded vector index with ${vectorIndex.ntotal} vectors`);
         return true;
       } catch (error) {
@@ -107,14 +107,14 @@ export const createEmbedding = async (text) => {
       throw new Error('Failed to initialize embedding model');
     }
   }
-  
+
   try {
     // Generate embeddings using Xenova transformers
-    const result = await embedder(text, { 
+    const result = await embedder(text, {
       pooling: 'mean',
-      normalize: true 
+      normalize: true
     });
-    
+
     // Return the embedding as a regular array
     return Array.from(result.data);
   } catch (error) {
@@ -133,26 +133,26 @@ export const semanticSearch = async (db, query, limit = 10) => {
         throw new Error('Vector index not available. Please run indexing first.');
       }
     }
-    
+
     // Create embedding for the query
     const queryEmbedding = await createEmbedding(query);
-    
+
     // Search in vector index
     const { labels, distances } = vectorIndex.search(queryEmbedding, limit);
-    
+
     // Get note IDs from the results
     const noteIds = labels.map(idx => noteIdMap[idx]).filter(id => id);
-    
+
     if (noteIds.length === 0) {
       return [];
     }
-    
+
     // Prepare placeholders for SQL query
     const placeholders = noteIds.map(() => '?').join(',');
-    
+
     // Get full note details from database
     const notes = await db.allAsync(`
-      SELECT 
+      SELECT
         ZUNIQUEIDENTIFIER as id,
         ZTITLE as title,
         ZTEXT as content,
@@ -162,7 +162,7 @@ export const semanticSearch = async (db, query, limit = 10) => {
       WHERE ZUNIQUEIDENTIFIER IN (${placeholders}) AND ZTRASHED = 0
       ORDER BY ZMODIFICATIONDATE DESC
     `, noteIds);
-    
+
     // Get tags for each note
     for (const note of notes) {
       try {
@@ -178,18 +178,18 @@ export const semanticSearch = async (db, query, limit = 10) => {
         console.error(`Error fetching tags for note ${note.id}:`, tagError.message);
         note.tags = [];
       }
-      
+
       // Convert Apple's timestamp (seconds since 2001-01-01) to standard timestamp
       if (note.creation_date) {
         // Apple's reference date is 2001-01-01, so add seconds to get UNIX timestamp
         note.creation_date = new Date((note.creation_date + 978307200) * 1000).toISOString();
       }
-      
+
       // Store the semantic similarity score (lower distance is better)
       const idx = noteIds.indexOf(note.id);
       note.score = idx >= 0 ? 1 - distances[idx] : 0;
     }
-    
+
     // Sort by similarity score
     return notes.sort((a, b) => b.score - a.score);
   } catch (error) {
@@ -212,10 +212,10 @@ export const searchNotes = async (db, query, limit = 10, useSemanticSearch = tru
         console.error('Semantic search failed, falling back to keyword search:', error.message);
       }
     }
-    
+
     // Fallback to keyword search
     const notes = await db.allAsync(`
-      SELECT 
+      SELECT
         ZUNIQUEIDENTIFIER as id,
         ZTITLE as title,
         ZTEXT as content,
@@ -226,7 +226,7 @@ export const searchNotes = async (db, query, limit = 10, useSemanticSearch = tru
       ORDER BY ZMODIFICATIONDATE DESC
       LIMIT ?
     `, [`%${query}%`, `%${query}%`, limit]);
-    
+
     // Get tags for each note
     for (const note of notes) {
       try {
@@ -237,20 +237,20 @@ export const searchNotes = async (db, query, limit = 10, useSemanticSearch = tru
           JOIN ZSFNOTE ZN ON ZN.Z_PK = ZNT.Z_5NOTES
           WHERE ZN.ZUNIQUEIDENTIFIER = ?
         `, [note.id]);
-        
+
         note.tags = tags.map(t => t.tag_name);
       } catch (tagError) {
         console.error(`Error fetching tags for note ${note.id}:`, tagError.message);
         note.tags = [];
       }
-      
+
       // Convert Apple's timestamp (seconds since 2001-01-01) to standard timestamp
       if (note.creation_date) {
         // Apple's reference date is 2001-01-01, so add seconds to get UNIX timestamp
         note.creation_date = new Date((note.creation_date + 978307200) * 1000).toISOString();
       }
     }
-    
+
     return notes;
   } catch (error) {
     console.error('Search error:', error);
@@ -264,10 +264,10 @@ export const retrieveNote = async (db, id) => {
     if (!id) {
       throw new Error('Note ID is required');
     }
-    
+
     // Get the note by ID
     const note = await db.getAsync(`
-      SELECT 
+      SELECT
         ZUNIQUEIDENTIFIER as id,
         ZTITLE as title,
         ZTEXT as content,
@@ -276,11 +276,11 @@ export const retrieveNote = async (db, id) => {
       FROM ZSFNOTE
       WHERE ZUNIQUEIDENTIFIER = ? AND ZTRASHED = 0
     `, [id]);
-    
+
     if (!note) {
       throw new Error('Note not found');
     }
-    
+
     // Get tags for the note
     try {
       const tags = await db.allAsync(`
@@ -295,13 +295,13 @@ export const retrieveNote = async (db, id) => {
       console.error(`Error fetching tags for note ${note.id}:`, tagError.message);
       note.tags = [];
     }
-    
+
     // Convert Apple's timestamp (seconds since 2001-01-01) to standard timestamp
     if (note.creation_date) {
       // Apple's reference date is 2001-01-01, so add seconds to get UNIX timestamp
       note.creation_date = new Date((note.creation_date + 978307200) * 1000).toISOString();
     }
-    
+
     return note;
   } catch (error) {
     console.error('Retrieve error:', error);
@@ -325,7 +325,7 @@ export const retrieveForRAG = async (db, query, limit = 5) => {
   try {
     // Get semantically similar notes
     const notes = await semanticSearch(db, query, limit);
-    
+
     // Format for RAG context
     return notes.map(note => ({
       id: note.id,
