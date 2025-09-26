@@ -3,7 +3,7 @@
 import { getDbPath, createDb, initEmbedder, createEmbedding } from './utils.js';
 // Fix for CommonJS module import in ESM
 import faissNode from 'faiss-node';
-const { IndexFlatL2 } = faissNode;
+const { IndexFlatIP } = faissNode;
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -46,10 +46,10 @@ async function createVectorIndex() {
     
     // Create vectors for all notes
     const noteIds = [];
-    const dimension = 384; // Dimension of the all-MiniLM-L6-v2 model
+    const dimension = 384; // Dimension of the embedding model
     
-    // Create FAISS index
-    const index = new IndexFlatL2(dimension);
+    // Create FAISS index using Inner Product (cosine with normalized vectors)
+    const index = new IndexFlatIP(dimension);
     
     // Process notes in batches to avoid memory issues
     for (let i = 0; i < notes.length; i++) {

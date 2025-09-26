@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import { pipeline } from '@xenova/transformers';
 // Fix for CommonJS module import in ESM
 import faissNode from 'faiss-node';
-const { IndexFlatL2 } = faissNode;
+const { IndexFlatIP } = faissNode;
 
 // Get current file path for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -79,8 +79,8 @@ export const loadVectorIndex = async () => {
       try {
       await fs.access(`${INDEX_PATH}.index`);
 
-      // Load index using the direct file reading method
-      vectorIndex = IndexFlatL2.read(`${INDEX_PATH}.index`);
+      // Load index using the direct file reading method (Inner Product / cosine)
+      vectorIndex = IndexFlatIP.read(`${INDEX_PATH}.index`);
 
         const idMapData = await fs.readFile(`${INDEX_PATH}.json`, 'utf8');
         noteIdMap = JSON.parse(idMapData);
@@ -137,7 +137,7 @@ export const semanticSearch = async (db, query, limit = 10) => {
     // Create embedding for the query
     const queryEmbedding = await createEmbedding(query);
 
-    // Search in vector index
+    // Search in vector index (inner product). With normalized vectors, this equals cosine similarity.
     const { labels, distances } = vectorIndex.search(queryEmbedding, limit);
 
     // Get note IDs from the results
@@ -185,9 +185,9 @@ export const semanticSearch = async (db, query, limit = 10) => {
         note.creation_date = new Date((note.creation_date + 978307200) * 1000).toISOString();
       }
 
-      // Store the semantic similarity score (lower distance is better)
+      // Store the similarity score (higher is better for inner product / cosine)
       const idx = noteIds.indexOf(note.id);
-      note.score = idx >= 0 ? 1 - distances[idx] : 0;
+      note.score = idx >= 0 ? distances[idx] : 0;
     }
 
     // Sort by similarity score
