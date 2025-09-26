@@ -22,24 +22,24 @@ import {
 // Initialize dependencies
 async function initialize() {
   console.error('Initializing Bear Notes MCP server...');
-  
+
   // Initialize database connection
   const dbPath = getDbPath();
   const db = createDb(dbPath);
-  
+
   // Initialize embedding model
   const modelInitialized = await initEmbedder();
   if (!modelInitialized) {
     console.error('Warning: Embedding model initialization failed, semantic search will not be available');
   }
-  
+
   // Load vector index
   const indexLoaded = await loadVectorIndex();
   if (!indexLoaded) {
     console.error('Warning: Vector index not found, semantic search will not be available');
     console.error('Run "npm run index" to create the vector index');
   }
-  
+
   return { db, hasSemanticSearch: modelInitialized && indexLoaded };
 }
 
@@ -47,7 +47,7 @@ async function initialize() {
 async function main() {
   // Initialize components
   const { db, hasSemanticSearch } = await initialize();
-  
+
   // Create MCP server
   const server = new Server(
     {
@@ -109,7 +109,7 @@ async function main() {
         },
       }
     ];
-    
+
     // Add RAG tool if semantic search is available
     if (hasSemanticSearch) {
       tools.push({
@@ -131,7 +131,7 @@ async function main() {
         },
       });
     }
-    
+
     return { tools };
   });
 
@@ -140,65 +140,108 @@ async function main() {
     if (request.params.name === 'search_notes') {
       const { query, limit = 10, semantic = true } = request.params.arguments;
       const useSemanticSearch = semantic && hasSemanticSearch;
-      
+
       try {
         const notes = await searchNotes(db, query, limit, useSemanticSearch);
-        return { 
-          toolResult: { 
-            notes,
-            searchMethod: useSemanticSearch ? 'semantic' : 'keyword' 
-          } 
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                notes,
+                searchMethod: useSemanticSearch ? 'semantic' : 'keyword'
+              })
+            }
+          ]
         };
       } catch (error) {
-        return { 
-          toolResult: { 
-            error: `Search failed: ${error.message}`,
-            searchMethod: 'keyword',
-            notes: [] 
-          } 
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: `Search failed: ${error.message}`,
+                searchMethod: 'keyword',
+                notes: []
+              })
+            }
+          ],
+          isError: true
         };
       }
     }
-    
+
     if (request.params.name === 'get_note') {
       const { id } = request.params.arguments;
       try {
         const note = await retrieveNote(db, id);
-        return { toolResult: { note } };
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ note })
+            }
+          ]
+        };
       } catch (error) {
-        return { toolResult: { error: error.message } };
+        return {
+          content: [
+            { type: 'text', text: error.message }
+          ],
+          isError: true
+        };
       }
     }
-    
+
     if (request.params.name === 'get_tags') {
       try {
         const tags = await getAllTags(db);
-        return { toolResult: { tags } };
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ tags })
+            }
+          ]
+        };
       } catch (error) {
-        return { toolResult: { error: error.message } };
+        return {
+          content: [
+            { type: 'text', text: error.message }
+          ],
+          isError: true
+        };
       }
     }
-    
+
     if (request.params.name === 'retrieve_for_rag' && hasSemanticSearch) {
       const { query, limit = 5 } = request.params.arguments;
       try {
         const context = await retrieveForRAG(db, query, limit);
-        return { 
-          toolResult: { 
-            context,
-            query 
-          } 
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ context, query })
+            }
+          ]
         };
       } catch (error) {
-        return { 
-          toolResult: { 
-            error: `RAG retrieval failed: ${error.message}`,
-            context: [] 
-          } 
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: `RAG retrieval failed: ${error.message}`,
+                context: []
+              })
+            }
+          ],
+          isError: true
         };
       }
     }
-    
+
     throw new McpError(ErrorCode.MethodNotFound, 'Tool not found');
   });
 
